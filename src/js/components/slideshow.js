@@ -16,7 +16,7 @@
 
     "use strict";
 
-    var Animations;
+    var Animations, playerId = 0;
 
     UI.component('slideshow', {
 
@@ -56,7 +56,7 @@
 
         init: function() {
 
-            var $this = this, canvas;
+            var $this = this, canvas, kbanimduration;
 
             this.container     = this.element.hasClass('uk-slideshow') ? this.element : UI.$(this.find('.uk-slideshow'));
             this.slides        = this.container.children();
@@ -65,6 +65,15 @@
             this.animating     = false;
             this.triggers      = this.find('[data-uk-slideshow-item]');
             this.fixFullscreen = navigator.userAgent.match(/(iPad|iPhone|iPod)/g) && this.container.hasClass('uk-slideshow-fullscreen'); // viewport unit fix for height:100vh - should be fixed in iOS 8
+
+            if (this.options.kenburns) {
+
+                kbanimduration = this.options.kenburns === true ? '15s': this.options.kenburns;
+
+                if (!String(kbanimduration).match(/(ms|s)$/)) {
+                    kbanimduration += 'ms';
+                }
+            }
 
             this.slides.each(function(index) {
 
@@ -86,9 +95,10 @@
                             media.css({'width': '100%','height': 'auto'});
                             slide.prepend(cover).data('cover', cover);
                             break;
+
                         case 'IFRAME':
 
-                            var src = media[0].src;
+                            var src = media[0].src, iframeId = 'sw-'+(++playerId);
 
                             media
                                 .attr('src', '').on('load', function(){
@@ -98,18 +108,25 @@
                                     }
 
                                     if ($this.options.videomute) {
+
                                         $this.mutemedia(media);
-                                        setTimeout(function() {
-                                            $this.mutemedia(media);
-                                        }, 1000);
+
+                                        var inv = setInterval((function(ic) {
+                                            return function() {
+                                                $this.mutemedia(media);
+                                                if (++ic >= 4) clearInterval(inv);
+                                            }
+                                        })(0), 250);
                                     }
 
                                 })
-                                .attr('src', [src, (src.indexOf('?') > -1 ? '&':'?'), 'enablejsapi=1&api=1'].join(''))
+                                .data('slideshow', $this)  // add self-reference for the vimeo-ready listener
+                                .attr('data-player-id', iframeId)  // add frameId for the vimeo-ready listener
+                                .attr('src', [src, (src.indexOf('?') > -1 ? '&':'?'), 'enablejsapi=1&api=1&player_id='+iframeId].join(''))
                                 .addClass('uk-position-absolute');
 
-                                // disable pointer events
-                                if(!UI.support.touch) media.css('pointer-events', 'none');
+                            // disable pointer events
+                            if(!UI.support.touch) media.css('pointer-events', 'none');
 
                             placeholder = true;
 
@@ -119,6 +136,7 @@
                             }
 
                             break;
+
                         case 'VIDEO':
                             media.addClass('uk-cover-object uk-position-absolute');
                             placeholder = true;
@@ -137,6 +155,14 @@
 
                 } else {
                     slide.data('sizer', slide);
+                }
+
+                if ($this.hasKenBurns(slide)) {
+
+                    slide.data('cover').css({
+                        '-webkit-animation-duration': kbanimduration,
+                        'animation-duration': kbanimduration
+                    });
                 }
             });
 
@@ -173,7 +199,10 @@
                 }
             }, 100));
 
-            this.resize();
+            // chrome image load fix
+            setTimeout(function(){
+                $this.resize();
+            }, 80);
 
             // Set autoplay
             if (this.options.autoplay) {
@@ -232,7 +261,7 @@
 
         show: function(index, direction) {
 
-            if (this.animating) return;
+            if (this.animating || this.current == index) return;
 
             this.animating = true;
 
@@ -296,11 +325,11 @@
                     '', // middle-center
                     'uk-animation-bottom-right'
                 ],
-                index = this.kbindex || 0;
+                index    = this.kbindex || 0;
 
 
             slide.data('cover').attr('class', 'uk-cover-background uk-position-cover').width();
-            slide.data('cover').addClass(['uk-animation-scale', 'uk-animation-reverse', 'uk-animation-15', animations[index]].join(' '));
+            slide.data('cover').addClass(['uk-animation-scale', 'uk-animation-reverse', animations[index]].join(' '));
 
             this.kbindex = animations[index + 1] ? (index+1):0;
         },
@@ -324,7 +353,7 @@
             var $this = this;
 
             this.interval = setInterval(function() {
-                if (!$this.hovering) $this.show($this.options.start, $this.next());
+                if (!$this.hovering) $this.next();
             }, this.options.autoplayInterval);
 
         },
@@ -483,5 +512,28 @@
     };
 
     UI.slideshow.animations = Animations;
+
+    // Listen for messages from the vimeo player
+    window.addEventListener('message', function onMessageReceived(e) {
+
+        var data = e.data, iframe;
+
+        if (typeof(data) == 'string') {
+
+            try {
+                data = JSON.parse(data);
+            } catch(err) {
+                data = {};
+            }
+        }
+
+        if (e.origin && e.origin.indexOf('vimeo') > -1 && data.event == 'ready' && data.player_id) {
+            iframe = UI.$('[data-player-id="'+ data.player_id+'"]');
+
+            if (iframe.length) {
+                iframe.data('slideshow').mutemedia(iframe);
+            }
+        }
+    }, false);
 
 });

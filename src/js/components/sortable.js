@@ -146,19 +146,12 @@
 
             touchedlists = [];
 
-            Object.keys(this.options).forEach(function(key){
-
-                if (String($this.options[key]).indexOf('Class')!=-1) {
-                    $this.options[key] = $this.options[key];
-                }
-            });
-
             // make sure :empty selector works on empty lists
             if (this.element.children().length === 0) {
                 this.element.html('');
             }
 
-            UI.$(this.element).data('sortable-group', this.options.group );
+            this.element.data('sortable-group', this.options.group );
 
             // prevent leaving page after link clicking
             this.element.on('mousedown touchstart', 'a[href]', function(e) {
